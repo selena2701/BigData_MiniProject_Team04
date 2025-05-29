@@ -13,7 +13,7 @@ st.set_page_config(page_title="Customer Segmentation Dashboard", layout="wide")
 st.title("Customer Segmentation Dashboard")
 
 # Upload file
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+uploaded_file = st.file_uploader("Upload your CSV/XLSX file", type=["csv","xlsx"])
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
