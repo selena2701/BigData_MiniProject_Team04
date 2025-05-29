@@ -22,7 +22,10 @@ if uploaded_file is not None:
         df = pd.read_excel(uploaded_file)
 
     st.subheader("Raw Data")
-    st.write(df.head())
+    # Convert object columns to string to avoid Arrow serialization issues
+    for col in df.select_dtypes(include=['object', 'category']).columns:
+        df[col] = df[col].astype(str)
+    st.write(df.head(100))
 
     # Sidebar for parameters
     st.sidebar.header("Clustering Settings")
@@ -31,9 +34,23 @@ if uploaded_file is not None:
     n_clusters = st.sidebar.slider("Number of clusters (k)", 2, 10, 3)
 
     if selected_features:
+        # Data cleaning
+        df_clean = df[selected_features].copy()
+        
+        # Replace infinite values with NaN
+        df_clean = df_clean.replace([np.inf, -np.inf], np.nan)
+        
+        # Fill missing values with median
+        df_clean = df_clean.fillna(df_clean.median())
+        
+        # Show data quality metrics
+        st.subheader("Data Quality Metrics")
+        missing_values = df_clean.isnull().sum()
+        st.write("Missing values after cleaning:", missing_values)
+        
         # Preprocess
         scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(df[selected_features])
+        X_scaled = scaler.fit_transform(df_clean)
 
         # Run KMeans
         kmeans = KMeans(n_clusters=n_clusters, random_state=42)
@@ -41,7 +58,10 @@ if uploaded_file is not None:
         df['Cluster'] = labels
 
         st.subheader("Clustered Data")
-        st.write(df.head())
+        # Convert object columns to string to avoid Arrow serialization issues
+        for col in df.select_dtypes(include=['object', 'category']).columns:
+            df[col] = df[col].astype(str)
+        st.write(df.head(100))
 
         # Silhouette Score
         score = silhouette_score(X_scaled, labels)
