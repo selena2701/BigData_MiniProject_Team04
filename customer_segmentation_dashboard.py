@@ -1,88 +1,93 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import silhouette_score
-import plotly.express as px
+import streamlit_echarts as st_echarts
 
-st.set_page_config(page_title="Customer Segmentation Dashboard", layout="wide")
+st.set_page_config(page_title="Customer Segmentation Insights", layout="wide")
 
-st.title("Customer Segmentation Dashboard")
+st.title("Customer Segmentation Insights Dashboard")
 
-# Upload file
-uploaded_file = st.file_uploader("Upload your CSV/XLSX file", type=["csv", "xlsx"])
+# Load mined data
+try:
+    cs_df = pd.read_csv("Source_Code/mined_results.csv", parse_dates=['InvoiceDate'])
+except FileNotFoundError:
+    st.error("⚠️ Mined results file not found. Please ensure 'Source_Code/mined_results.csv' exists.")
+    st.stop()
 
-if uploaded_file is not None:
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+# Sidebar filters
+st.sidebar.header("Filters")
+country_list = cs_df['Country'].unique().tolist()
+selected_country = st.sidebar.multiselect("Select Country", country_list, default=country_list)
 
-    st.subheader("Raw Data")
-    # Convert object columns to string to avoid Arrow serialization issues
-    for col in df.select_dtypes(include=['object', 'category']).columns:
-        df[col] = df[col].astype(str)
-    st.write(df.head(100))
+min_date, max_date = cs_df['InvoiceDate'].min(), cs_df['InvoiceDate'].max()
+selected_date = st.sidebar.date_input("Select Date Range", [min_date, max_date], min_value=min_date, max_value=max_date)
 
-    # Sidebar for parameters
-    st.sidebar.header("Clustering Settings")
-    numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-    selected_features = st.sidebar.multiselect("Select features for clustering", numeric_cols, default=numeric_cols)
-    n_clusters = st.sidebar.slider("Number of clusters (k)", 2, 10, 3)
-
-    if selected_features:
-        # Data cleaning
-        df_clean = df[selected_features].copy()
-        
-        # Replace infinite values with NaN
-        df_clean = df_clean.replace([np.inf, -np.inf], np.nan)
-        
-        # Fill missing values with median
-        df_clean = df_clean.fillna(df_clean.median())
-        
-        # Show data quality metrics
-        st.subheader("Data Quality Metrics")
-        missing_values = df_clean.isnull().sum()
-        st.write("Missing values after cleaning:", missing_values)
-        
-        # Preprocess
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(df_clean)
-
-        # Run KMeans
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-        labels = kmeans.fit_predict(X_scaled)
-        df['Cluster'] = labels
-
-        st.subheader("Clustered Data")
-        # Convert object columns to string to avoid Arrow serialization issues
-        for col in df.select_dtypes(include=['object', 'category']).columns:
-            df[col] = df[col].astype(str)
-        st.write(df.head(100))
-
-        # Silhouette Score
-        score = silhouette_score(X_scaled, labels)
-        st.write(f"Silhouette Score: {score:.2f}")
-
-        # Plot clusters (if at least 2 features)
-        if len(selected_features) >= 2:
-            fig = px.scatter(
-                df,
-                x=selected_features[0],
-                y=selected_features[1],
-                color=df['Cluster'].astype(str),
-                title=f"Clusters on {selected_features[0]} vs {selected_features[1]}"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-        # Show cluster centers
-        centers = pd.DataFrame(kmeans.cluster_centers_, columns=selected_features)
-        st.subheader("Cluster Centers")
-        st.write(centers)
-    else:
-        st.warning("Please select at least one numeric feature for clustering.")
+# Apply filters safely
+if isinstance(selected_date, list) and len(selected_date) == 2:
+    start_date, end_date = pd.to_datetime(selected_date[0]), pd.to_datetime(selected_date[1])
 else:
-    st.info("Please upload a CSV or XLSX file to start.")
+    start_date, end_date = min_date, max_date
+
+filtered_df = cs_df[(cs_df['Country'].isin(selected_country)) & (cs_df['InvoiceDate'] >= start_date) & (cs_df['InvoiceDate'] <= end_date)]
+
+st.subheader("Filtered Data Overview")
+if filtered_df.empty:
+    st.warning("No data matches the selected filters.")
+else:
+    st.write(filtered_df)
+
+    def dynamic_height(x_data):
+        base_height = 500
+        extra_height = (len(x_data) // 10) * 100
+        return f"{base_height + extra_height}px"
+
+    def build_bar_option(x_data, y_data, title):
+        return {
+            "title": {"text": title, "left": "center"},
+            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+            "grid": {"bottom": 120},
+            "xAxis": {"type": "category", "data": x_data, "axisLabel": {"interval": 0, "rotate": 90}},
+            "yAxis": {"type": "value"},
+            "series": [{"data": y_data, "type": "bar"}]
+        }
+
+    # Sales by Country
+    country_sales = filtered_df.groupby("Country").amount.sum().sort_values(ascending=False)
+    st.subheader("Amount Sales by Country")
+    option = build_bar_option(country_sales.index.tolist(), country_sales.values.tolist(), "Amount Sales by Country")
+    st_echarts.st_echarts(option, height=dynamic_height(country_sales))
+    st.markdown("---")
+
+    # Product-based charts
+    AmoutSum = filtered_df.groupby(["Description"]).amount.sum().sort_values(ascending=False)
+    inv = filtered_df.groupby(["Description"]).InvoiceNo.nunique().sort_values(ascending=False)
+
+    Top10 = list(AmoutSum[:10].index)
+    st.subheader("Top 10 Products in Sales Amount")
+    option_top10 = build_bar_option(Top10, AmoutSum[Top10].values.tolist(), "Top 10 Products in Sales Amount")
+    st_echarts.st_echarts(option_top10, height=dynamic_height(Top10))
+    st.markdown("---")
+
+    Top10Ev = list(inv[:10].index)
+    st.subheader("Events of Top 10 Most Sold Products")
+    option_top10ev = build_bar_option(Top10Ev, inv[Top10Ev].values.tolist(), "Top 10 Most Sold Products (Event Count)")
+    st_echarts.st_echarts(option_top10ev, height=dynamic_height(Top10Ev))
+    st.markdown("---")
+
+    Top15ev = list(inv[:15].index)
+    st.subheader("Sales Amount of Top 15 Most Sold Products")
+    option_top15ev = build_bar_option(Top15ev, AmoutSum[Top15ev].sort_values(ascending=False).values.tolist(), "Top 15 Most Sold Products (Sales Amount)")
+    st_echarts.st_echarts(option_top15ev, height=dynamic_height(Top15ev))
+    st.markdown("---")
+
+    Top50 = list(AmoutSum[:50].index)
+    st.subheader("Top 50 Products in Sales Amount")
+    option_top50 = build_bar_option(Top50, AmoutSum[Top50].values.tolist(), "Top 50 Products in Sales Amount")
+    st_echarts.st_echarts(option_top50, height=dynamic_height(Top50))
+    st.markdown("---")
+
+    Top50Ev = list(inv[:50].index)
+    st.subheader("Top 50 Most Sold Products (Event Count)")
+    option_top50ev = build_bar_option(Top50Ev, inv[Top50Ev].values.tolist(), "Top 50 Most Sold Products (Event Count)")
+    st_echarts.st_echarts(option_top50ev, height=dynamic_height(Top50Ev))
+    st.markdown("---")
