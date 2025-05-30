@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit_echarts as st_echarts
 
 st.set_page_config(page_title="Customer Segmentation Insights", layout="wide")
 
@@ -36,58 +35,53 @@ if filtered_df.empty:
 else:
     st.write(filtered_df)
 
-    def dynamic_height(x_data):
-        base_height = 500
-        extra_height = (len(x_data) // 10) * 100
-        return f"{base_height + extra_height}px"
-
-    def build_bar_option(x_data, y_data, title):
-        return {
-            "title": {"text": title, "left": "center"},
-            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
-            "grid": {"bottom": 120},
-            "xAxis": {"type": "category", "data": x_data, "axisLabel": {"interval": 0, "rotate": 90}},
-            "yAxis": {"type": "value"},
-            "series": [{"data": y_data, "type": "bar"}]
-        }
+    def show_vega_bar_chart(df, x_col, y_col, title, height=500):
+        st.vega_lite_chart(
+            df,
+            {
+                "mark": {"type": "bar", "tooltip": True},
+                "encoding": {
+                    "x": {"field": x_col, "type": "nominal", "axis": {"labelAngle": -90}},
+                    "y": {"field": y_col, "type": "quantitative"},
+                    "tooltip": [{"field": x_col, "type": "nominal"}, {"field": y_col, "type": "quantitative"}]
+                },
+                "title": title,
+                "height": height
+            },
+            use_container_width=True
+        )
 
     # Sales by Country
-    country_sales = filtered_df.groupby("Country").amount.sum().sort_values(ascending=False)
+    country_sales = filtered_df.groupby("Country").amount.sum().sort_values(ascending=False).reset_index()
     st.subheader("Amount Sales by Country")
-    option = build_bar_option(country_sales.index.tolist(), country_sales.values.tolist(), "Amount Sales by Country")
-    st_echarts.st_echarts(option, height=dynamic_height(country_sales))
+    show_vega_bar_chart(country_sales, "Country", "amount", "Amount Sales by Country")
     st.markdown("---")
 
     # Product-based charts
-    AmoutSum = filtered_df.groupby(["Description"]).amount.sum().sort_values(ascending=False)
-    inv = filtered_df.groupby(["Description"]).InvoiceNo.nunique().sort_values(ascending=False)
+    AmoutSum = filtered_df.groupby(["Description"]).amount.sum().sort_values(ascending=False).reset_index()
+    inv = filtered_df.groupby(["Description"]).InvoiceNo.nunique().sort_values(ascending=False).reset_index()
 
-    Top10 = list(AmoutSum[:10].index)
+    Top10 = AmoutSum.head(10)
     st.subheader("Top 10 Products in Sales Amount")
-    option_top10 = build_bar_option(Top10, AmoutSum[Top10].values.tolist(), "Top 10 Products in Sales Amount")
-    st_echarts.st_echarts(option_top10, height=dynamic_height(Top10))
+    show_vega_bar_chart(Top10, "Description", "amount", "Top 10 Products in Sales Amount")
     st.markdown("---")
 
-    Top10Ev = list(inv[:10].index)
+    Top10Ev = inv.head(10)
     st.subheader("Events of Top 10 Most Sold Products")
-    option_top10ev = build_bar_option(Top10Ev, inv[Top10Ev].values.tolist(), "Top 10 Most Sold Products (Event Count)")
-    st_echarts.st_echarts(option_top10ev, height=dynamic_height(Top10Ev))
+    show_vega_bar_chart(Top10Ev, "Description", "InvoiceNo", "Top 10 Most Sold Products (Event Count)")
     st.markdown("---")
 
-    Top15ev = list(inv[:15].index)
+    Top15ev = AmoutSum.merge(inv, on="Description").head(15)
     st.subheader("Sales Amount of Top 15 Most Sold Products")
-    option_top15ev = build_bar_option(Top15ev, AmoutSum[Top15ev].sort_values(ascending=False).values.tolist(), "Top 15 Most Sold Products (Sales Amount)")
-    st_echarts.st_echarts(option_top15ev, height=dynamic_height(Top15ev))
+    show_vega_bar_chart(Top15ev, "Description", "amount", "Top 15 Most Sold Products (Sales Amount)")
     st.markdown("---")
 
-    Top50 = list(AmoutSum[:50].index)
+    Top50 = AmoutSum.head(50)
     st.subheader("Top 50 Products in Sales Amount")
-    option_top50 = build_bar_option(Top50, AmoutSum[Top50].values.tolist(), "Top 50 Products in Sales Amount")
-    st_echarts.st_echarts(option_top50, height=dynamic_height(Top50))
+    show_vega_bar_chart(Top50, "Description", "amount", "Top 50 Products in Sales Amount")
     st.markdown("---")
 
-    Top50Ev = list(inv[:50].index)
+    Top50Ev = inv.head(50)
     st.subheader("Top 50 Most Sold Products (Event Count)")
-    option_top50ev = build_bar_option(Top50Ev, inv[Top50Ev].values.tolist(), "Top 50 Most Sold Products (Event Count)")
-    st_echarts.st_echarts(option_top50ev, height=dynamic_height(Top50Ev))
+    show_vega_bar_chart(Top50Ev, "Description", "InvoiceNo", "Top 50 Most Sold Products (Event Count)")
     st.markdown("---")
